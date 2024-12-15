@@ -34,7 +34,7 @@
 ### 前提条件
 - このリポジトリをクローンまたはダウンロード
 - Azure OpenAI ServiceまたはOpenAIの準備
-    - Azure OpenAI Service：GPT-35-turboまたはGPT-4のデプロイ
+    - Azure OpenAI Service：任意のGPTベースのモデルのデプロイ
     - OpenAI：APIキーを取得
 - ローカル実行を行う場合は以下の環境がローカルマシンに準備されていること
     - Python
@@ -81,6 +81,81 @@ https://github.com/07JP27/azureopenai-internal-microsoft-search/blob/52053b6c672
 1. 入力エリアに質問を入力してチャットを開始します。
 
 ### 4.Azureへのデプロイ
-TBW
+1. Azure にログインします。
+```
+az login
+```
+
+2. リソースグループを作成します(Azure OpenAI を使用する場合、同じリソースグループを使用してください)。
+```
+az group create --name <リソースグループ名> --location <リージョン>
+```
+
+3. App Serviceプランを作成します。今回は Basic B1 を使用していますが、必要に応じて変更してください。
+```
+az appservice plan create --name <App Serviceプラン名> --resource-group <リソースグループ名> --sku B1 --is-linux
+```
+
+4. App Serviceを作成します。
+```
+az webapp create --resource-group <リソースグループ名> --plan <App Serviceプラン名> --name <App Service名> --runtime "PYTHON|3.11" --deployment-local-git
+```
+
+5. App Serviceにデプロイするために、下記のコマンドでデプロイするためのファイルをzip化します。
+```
+# フロントエンドのビルド
+cd src/frontend
+npm install
+npm run build
+
+# バックエンドのzip化
+cd ../backend
+zip -r ./app.zip .
+```
+
+6. デプロイ用のzipファイルを作成したら、App Serviceにデプロイします。
+```
+az webapp deployment source config-zip --resource-group <リソースグループ名> --name <App Service名> --src app.zip
+```
+
+7. App Serviceに必要な設定をします。環境変数の設定では、.envファイルに記載されている内容およびSCM_DO_BUILD_DURING_DEPLOYMENTをtrueに設定します。
+```
+# スタートアップコマンドの設定
+az webapp config set --resource-group <リソースグループ名> --name <App Service名> --startup-file "python3 -m gunicorn main:app"
 
 
+# 環境変数の設定
+az webapp config appsettings set --name <App Service名> --resource-group <リソースグループ名> --settings \
+SCM_DO_BUILD_DURING_DEPLOYMENT=true \
+AZURE_OPENAI_CHATGPT_MODEL=<Azure OpenAI のモデル名> \
+AZURE_OPENAI_SERVICE=<Azure OpenAI Serviceのリソース名> \
+AZURE_OPENAI_CHATGPT_DEPLOYMENT=<Azure OpenAI のモデルのデプロイ名> \
+AZURE_USE_AUTHENTICATION="true" \
+AZURE_SERVER_APP_ID=<アプリケーションID> \
+AZURE_SERVER_APP_SECRET=<アプリケーションシークレット> \
+AZURE_CLIENT_APP_ID=<アプリケーションID> \
+AZURE_TENANT_ID=<テナントID> \
+TOKEN_CACHE_PATH="None"
+```
+8. App Service が Azure OpenAI Service にアクセスできるようにするために、Azure OpenAI Service のアクセス制御で App Service に RBAC「Cognitive Services OpenAI User」ロールを付与します。
+```
+# App ServiceのマネージドIDを有効化する
+az webapp identity assign --resource-group <リソースグループ名> --name <App Service名> 
+
+# App ServiceのマネージドIDが有効化したことを確認する
+$role = (az webapp identity show --resource-group <リソースグループ名> --name <App Service名> --query principalId -o tsv)
+
+# App ServiceのマネージドIDに対して、Azure OpenAI Serviceのアクセス権限を付与する
+az role assignment create --role "Cognitive Services OpenAI User" --assignee $role --scope /subscriptions/<サブスクリプションID>/resourceGroups/<リソースグループ名>
+```
+
+9. Entra ID アプリケーションに対して、Azure App Service の URL をリダイレクト URI に追加します。
+    1. [Azure Portal](https://portal.azure.com/) にログインします。
+    2. [Microsoft Entra ID](https://portal.azure.com/#view/Microsoft_AAD_IAM/ActiveDirectoryMenuBlade/~/Overview) > アプリの登録 の順に選択していき、アプリ登録一覧画面で作成したアプリケーションを選択します。
+    3. 「認証」を選択します。
+    4. 「リダイレクト URI」に App Service の URL を追加します。URI は `https://<App Service名>.azurewebsites.net/redirect` です。
+    5. 「保存」を選択します。
+![image](https://github.com/user-attachments/assets/009cf365-aaa2-4eb5-ab5c-47b8ee893e69)
+
+10. App Service の URL にアクセスして、アプリケーションが正常に動作していることを確認します。
+![image](https://github.com/user-attachments/assets/5522b963-f4dd-4adc-89c2-ac0d0b7920c7)

@@ -69,7 +69,7 @@ export const AnalysisPanel = ({ answer, activeTab, activeCitation, activeFileNam
                 headerText="Supporting content"
                 headerButtonProps={isDisabledSupportingContentTab ? pivotItemDisabledStyle : undefined}
             >
-                <SupportingContent supportingContent={answer.choices[0].context.data_points} />
+                <SupportingContent supportingContent={answer.choices[0].context.data_points.map(dataPoint => dataPoint.toString())} />
             </PivotItem>
             <PivotItem
                 itemKey={AnalysisPanelTabs.CitationTab}

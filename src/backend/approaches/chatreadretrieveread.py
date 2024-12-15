@@ -115,6 +115,7 @@ If you cannot generate a search query, return only the number 0.
 
         # Step2. クエリを使ってGraphを検索する
         client = GraphClientBuilder().get_client(obo_token)
+        print("obo_token:"+obo_token)
 
         request_body = QueryPostRequestBody(
             requests=[
@@ -127,9 +128,13 @@ If you cannot generate a search query, return only the number 0.
                 )
             ]
         )
+
+        print("------------------- query -------------------")
         
         search_result = await client.search.query.post(body = request_body)
         
+        print("------------------- search_result -------------------")
+        print(search_result)
         #search_resultがない場合は、クエリ生成したクエリを返す
         if search_result.value[0].hits_containers[0].total == 0:
             source_not_found_msg ={

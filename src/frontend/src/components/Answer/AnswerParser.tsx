@@ -13,10 +13,10 @@ type HtmlParsedAnswer = {
 export function getSourceInfomation(dataPoints: DataPoint[], id:string): DataPoint {
     //dataPointsの配列からidが一致するものを探す
     const dataPoint = dataPoints.find((dataPoint) => dataPoint.id === id);
-    return dataPoint??  {id: "", name: "", web_url: ""}; 
+    return dataPoint ?? { id: "", name: "", web_url: "", hit_id: "" }; 
 }
 
-export function parseAnswerToHtml(answer: string, isStreaming: boolean, onCitationClicked: (citationFilePath: string) => void): HtmlParsedAnswer {
+export function parseAnswerToHtml(answer: string, isStreaming: boolean, onCitationClicked: (hit_id: string, web_url: string, file_name: string) => void): HtmlParsedAnswer {
     const citations: string[] = [];
     const followupQuestions: string[] = [];
 
@@ -61,7 +61,7 @@ export function parseAnswerToHtml(answer: string, isStreaming: boolean, onCitati
             const path = getCitationFilePath(part);
 
             return renderToStaticMarkup(
-                <a className="supContainer" title={part} onClick={() => onCitationClicked(path)}>
+                <a className="supContainer" title={part} onClick={() => onCitationClicked(String(citationIndex), path, part)}>
                     <sup>{citationIndex}</sup>
                 </a>
             );

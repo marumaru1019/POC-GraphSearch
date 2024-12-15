@@ -327,3 +327,4 @@ zipp==3.17.0
 
 microsoft-kiota-abstractions==0.8.5
 msgraph-sdk==1.0.0a15
+gunicorn

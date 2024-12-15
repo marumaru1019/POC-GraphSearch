@@ -9,9 +9,10 @@ MODELS_2_TOKEN_LIMITS = {
     "gpt-3.5-turbo-16k": 16000,
     "gpt-4": 8100,
     "gpt-4-32k": 32000,
+    "gpt-4o-mini": 128000,
 }
 
-AOAI_2_OAI = {"gpt-35-turbo": "gpt-3.5-turbo", "gpt-35-turbo-16k": "gpt-3.5-turbo-16k"}
+AOAI_2_OAI = {"gpt-35-turbo": "gpt-3.5-turbo", "gpt-35-turbo-16k": "gpt-3.5-turbo-16k", "gpt-4": "gpt-4", "gpt-4-32k": "gpt-4-32k", "gpt-4o-mini": "gpt-4o"}
 
 
 def get_token_limit(model_id: str) -> int:
@@ -34,7 +35,8 @@ def num_tokens_from_messages(message: dict[str, str], model: str) -> int:
         num_tokens_from_messages(message, model)
         output: 11
     """
-    encoding = tiktoken.encoding_for_model(get_oai_chatmodel_tiktok(model))
+    # encoding = tiktoken.encoding_for_model(get_oai_chatmodel_tiktok(model))
+    encoding = tiktoken.get_encoding("cl100k_base")
     num_tokens = 2  # For "role" and "content" keys
     for key, value in message.items():
         num_tokens += len(encoding.encode(value))
@@ -43,7 +45,7 @@ def num_tokens_from_messages(message: dict[str, str], model: str) -> int:
 
 def get_oai_chatmodel_tiktok(aoaimodel: str) -> str:
     message = "Expected Azure OpenAI ChatGPT model name"
-    if aoaimodel == "" or aoaimodel is None:
+    if not aoaimodel:
         raise ValueError(message)
     if aoaimodel not in AOAI_2_OAI and aoaimodel not in MODELS_2_TOKEN_LIMITS:
         raise ValueError(message)
