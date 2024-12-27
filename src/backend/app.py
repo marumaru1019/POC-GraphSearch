@@ -105,10 +105,15 @@ async def setup_clients():
     # Used with Azure OpenAI deployments
     AZURE_OPENAI_SERVICE = os.getenv("AZURE_OPENAI_SERVICE")
     AZURE_OPENAI_CHATGPT_DEPLOYMENT = os.getenv("AZURE_OPENAI_CHATGPT_DEPLOYMENT")
+    AZURE_OPENAI_EMBEDDING_DEPLOYMENT = os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT")
 
     # Used only with non-Azure OpenAI deployments
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
     OPENAI_ORGANIZATION = os.getenv("OPENAI_ORGANIZATION")
+
+    # Used for Azure AI Search
+    AZURE_AI_SEARCH_ENDPOINT = os.getenv("AZURE_AI_SEARCH_ENDPOINT")
+    AZURE_AI_SEARCH_INDEX_NAME = os.getenv("AZURE_AI_SEARCH_INDEX_NAME")
 
     # Auth Infomation
     AZURE_USE_AUTHENTICATION = os.getenv("AZURE_USE_AUTHENTICATION", "").lower() == "true"
@@ -155,7 +160,10 @@ async def setup_clients():
     current_app.config[CONFIG_CHAT_APPROACH] = ChatReadRetrieveReadApproach(
         OPENAI_HOST,
         AZURE_OPENAI_CHATGPT_DEPLOYMENT,
+        AZURE_OPENAI_EMBEDDING_DEPLOYMENT,
         OPENAI_CHATGPT_MODEL,
+        AZURE_AI_SEARCH_ENDPOINT,
+        AZURE_AI_SEARCH_INDEX_NAME,
     )
 
 

@@ -80,6 +80,10 @@ https://github.com/07JP27/azureopenai-internal-microsoft-search/blob/52053b6c672
 1. 画面右上の「Login」ボタンをクリックして、アプリ登録を行ったディレクトリのユーザーアカウントでログインします。ログインに成功したら「Login」と表示されていた部分にユーザーのUPNが表示されます。
 1. 入力エリアに質問を入力してチャットを開始します。
 
+ローカル実行ユーザーに以下のRBACロールを付与する。
+* Search Service 共同作成者、オブジェクトの作成と管理
+* 検索インデックス データ共同作成者、インデックスとクエリの読み込み
+
 ### 4.Azureへのデプロイ
 1. Azure にログインします。
 ```
@@ -100,6 +104,11 @@ az appservice plan create --name <App Serviceプラン名> --resource-group <リ
 ```
 az webapp create --resource-group <リソースグループ名> --plan <App Serviceプラン名> --name <App Service名> --runtime "PYTHON|3.11" --deployment-local-git
 ```
+
+AI Search を作成します。
+ロールベースのアクセス制御に切り替えます。
+インデックスを作成します。
+AOAI 埋め込みモデル text-embedding-3-small を作成します。
 
 5. App Serviceにデプロイするために、下記のコマンドでデプロイするためのファイルをzip化します。
 ```
@@ -137,7 +146,10 @@ AZURE_CLIENT_APP_ID=<アプリケーションID> \
 AZURE_TENANT_ID=<テナントID> \
 TOKEN_CACHE_PATH="None"
 ```
-8. App Service が Azure OpenAI Service にアクセスできるようにするために、Azure OpenAI Service のアクセス制御で App Service に RBAC「Cognitive Services OpenAI User」ロールを付与します。
+8. App Service が Azure OpenAI Service にアクセスできるようにするために、Azure OpenAI Service のアクセス制御で App Service に以下の RBAC ロールを付与します。
+
+- Cognitive Services OpenAI User
+- 検索インデックス データ閲覧者
 ```
 # App ServiceのマネージドIDを有効化する
 az webapp identity assign --resource-group <リソースグループ名> --name <App Service名> 
