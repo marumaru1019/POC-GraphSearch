@@ -14,3 +14,4 @@ opentelemetry-instrumentation-aiohttp-client
 msal
 msal-extensions
 msgraph-sdk==1.5.3
+markitdown

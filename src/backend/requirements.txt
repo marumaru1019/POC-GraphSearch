@@ -43,6 +43,10 @@ azure-search-documents==11.4.0b6
     # via -r requirements.in
 azure-storage-blob==12.18.2
     # via -r requirements.in
+beautifulsoup4==4.12.3
+    # via
+    #   markdownify
+    #   markitdown
 blinker==1.6.2
     # via
     #   flask
@@ -56,18 +60,25 @@ cffi==1.16.0
 charset-normalizer==3.3.0
     # via
     #   aiohttp
+    #   markitdown
+    #   pdfminer-six
     #   requests
 click==8.1.7
     # via
     #   flask
     #   quart
     #   uvicorn
+cobble==0.1.4
+    # via mammoth
 cryptography==41.0.4
     # via
     #   azure-identity
     #   azure-storage-blob
     #   msal
+    #   pdfminer-six
     #   pyjwt
+defusedxml==0.7.1
+    # via youtube-transcript-api
 deprecated==1.2.14
     # via opentelemetry-api
 et-xmlfile==1.1.0
@@ -115,6 +126,14 @@ jinja2==3.1.2
     # via
     #   flask
     #   quart
+lxml==5.3.0
+    # via python-pptx
+mammoth==1.8.0
+    # via markitdown
+markdownify==0.14.1
+    # via markitdown
+markitdown==0.0.1a3
+    # via -r requirements.in
 markupsafe==2.1.3
     # via
     #   jinja2
@@ -137,15 +156,20 @@ multidict==6.0.4
     #   yarl
 numpy==1.26.0
     # via
+    #   markitdown
     #   openai
     #   pandas
     #   pandas-stubs
 oauthlib==3.2.2
     # via requests-oauthlib
 openai[datalib]==0.28.1
-    # via -r requirements.in
+    # via
+    #   -r requirements.in
+    #   markitdown
 openpyxl==3.1.2
-    # via openai
+    # via
+    #   markitdown
+    #   openai
 opentelemetry-api==1.20.0
     # via
     #   azure-core-tracing-opentelemetry
@@ -237,21 +261,35 @@ opentelemetry-util-http==0.41b0
 packaging==23.1
     # via opentelemetry-instrumentation-flask
 pandas==2.1.1
-    # via openai
+    # via
+    #   markitdown
+    #   openai
 pandas-stubs==2.1.1.230928
     # via openai
+pathvalidate==3.2.1
+    # via markitdown
+pdfminer-six==20240706
+    # via markitdown
+pillow==11.0.0
+    # via python-pptx
 portalocker==2.8.2
     # via msal-extensions
 priority==2.0.0
     # via hypercorn
+puremagic==1.28
+    # via markitdown
 pycparser==2.21
     # via cffi
+pydub==0.25.1
+    # via markitdown
 pyjwt[crypto]==2.8.0
     # via msal
 python-dateutil==2.8.2
     # via pandas
 python-dotenv==1.0.0
     # via uvicorn
+python-pptx==0.6.23
+    # via markitdown
 pytz==2023.3.post1
     # via pandas
 pyyaml==6.0.1
@@ -267,22 +305,31 @@ regex==2023.8.8
 requests==2.31.0
     # via
     #   azure-core
+    #   markitdown
     #   msal
     #   msrest
     #   openai
     #   requests-oauthlib
     #   tiktoken
+    #   youtube-transcript-api
 requests-oauthlib==1.3.1
     # via msrest
 six==1.16.0
     # via
     #   azure-core
     #   isodate
+    #   markdownify
     #   python-dateutil
 sniffio==1.3.0
     # via anyio
+soupsieve==2.6
+    # via beautifulsoup4
+speechrecognition==3.12.0
+    # via markitdown
 tiktoken==0.5.1
     # via -r requirements.in
+time-machine==2.16.0
+    # via pendulum
 tqdm==4.66.1
     # via openai
 types-pytz==2023.3.1.1
@@ -292,13 +339,16 @@ typing-extensions==4.8.0
     #   azure-core
     #   azure-storage-blob
     #   opentelemetry-sdk
+    #   speechrecognition
 tzdata==2023.3
-    # via pandas
+    # via
+    #   pandas
+    #   pendulum
 urllib3==2.0.7
     # via requests
-uvicorn==0.23.2
+uvicorn[standard]==0.23.2
     # via -r requirements.in
-# uvloop==0.17.0
+uvloop==0.21.0
     # via uvicorn
 watchfiles==0.20.0
     # via uvicorn
@@ -317,14 +367,14 @@ wrapt==1.15.0
     #   opentelemetry-instrumentation-urllib3
 wsproto==1.2.0
     # via hypercorn
+xlsxwriter==3.2.0
+    # via python-pptx
 yarl==1.9.2
     # via aiohttp
+youtube-transcript-api==0.6.3
+    # via markitdown
 zipp==3.17.0
     # via importlib-metadata
 
 # The following packages are considered to be unsafe in a requirements file:
 # setuptools
-
-microsoft-kiota-abstractions==0.8.5
-msgraph-sdk==1.0.0a15
-gunicorn
