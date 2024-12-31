@@ -1,13 +1,11 @@
 import logging
 import os
 import time
+import json
 from pathlib import Path
 
 import openai
 from azure.identity.aio import DefaultAzureCredential
-from azure.monitor.opentelemetry import configure_azure_monitor
-from opentelemetry.instrumentation.aiohttp_client import AioHttpClientInstrumentor
-from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
 from quart import (
     Blueprint,
     Quart,
@@ -48,6 +46,13 @@ async def favicon():
 @bp.route("/assets/<path:path>")
 async def assets(path):
     return await send_from_directory(Path(__file__).resolve().parent / "static" / "assets", path)
+
+def format_as_ndjson(data):
+    """Convert a list of dictionaries to NDJSON format."""
+    if isinstance(data, list):
+        return "\n".join(json.dumps(record) for record in data)
+    else:
+        return json.dumps(data)
 
 @bp.route("/chat", methods=["POST"])
 async def chat():
@@ -168,12 +173,8 @@ async def setup_clients():
 
 
 def create_app():
-    if os.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING"):
-        configure_azure_monitor()
-        AioHttpClientInstrumentor().instrument()
     app = Quart(__name__)
     app.register_blueprint(bp)
-    app.asgi_app = OpenTelemetryMiddleware(app.asgi_app)  # type: ignore[method-assign]
 
     # Level should be one of https://docs.python.org/3/library/logging.html#logging-levels
     default_level = "INFO"  # In development, log more verbosely
