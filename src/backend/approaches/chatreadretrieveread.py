@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Any, AsyncGenerator, Optional, Union
+from typing import Any, AsyncGenerator, Optional, Union, Dict
 
 import aiohttp
 import openai
@@ -12,9 +12,10 @@ from approaches.approach import Approach
 from core.messagebuilder import MessageBuilder
 from core.modelhelper import get_token_limit
 from core.graphclientbuilder import GraphClientBuilder
-from azure.search.documents import SearchClient
-from azure.search.documents.models import Vector
+from azure.search.documents import SearchClient, SearchItemPaged
+from azure.search.documents.models import VectorizedQuery
 from azure.identity import DefaultAzureCredential
+import asyncio
 
 class ChatReadRetrieveReadApproach(Approach):
     # Chat roles
@@ -159,7 +160,6 @@ If you cannot generate a search query, return only the number 0.
             }
             return ({}, source_not_found_msg)
 
-        #print(search_result)
         #ここではsummaryをソースにしているが、文章量によってはコンテンツ別にデータを取ったほうがいいかもしれない
         results = [
                 hit.resource.id + ": " + hit.summary
@@ -210,9 +210,14 @@ If you cannot generate a search query, return only the number 0.
         obo_token,
         session_state: Any = None,
     ) -> dict[str, Any]:
-        extra_info, chat_coroutine = await self.run_simple_chat(
-            history, obo_token, should_stream=False
+        # extra_info, chat_coroutine = await self.run_simple_chat(
+        #     history, obo_token, should_stream=False
+        # )
+        # print("simple chat: "+str(extra_info))
+        extra_info, chat_coroutine = await self.run_ai_search_chat(
+            history, obo_token
         )
+        print("ai search chat: "+str(extra_info))
 
         #extra_info, chat_coroutine = await self.run_until_final_call(
         #    history, overrides, auth_claims, should_stream=False
@@ -259,8 +264,7 @@ If you cannot generate a search query, return only the number 0.
             # Workaround for: https://github.com/openai/openai-python/issues/371
             async with aiohttp.ClientSession() as s:
                 openai.aiosession.set(s)
-                # response = await self.run_without_streaming(messages, overrides,obo_token, session_state)
-                response = await self.run_ai_search_chat(messages, obo_token)
+                response = await self.run_without_streaming(messages, overrides,obo_token, session_state)
             return response
         else:
             return self.run_with_streaming(messages, overrides, obo_token, session_state)
@@ -316,51 +320,87 @@ If you cannot generate a search query, return only the number 0.
     ) -> tuple:
         # Step 1: Generate embedding from user input
         user_input = history[-1]["content"]
-        # TODO: モデル名はクラスの初期化時に指定するように変更する
+        input_embedding = await self.__embed_text(user_input)
+
+        # Step 2: Vector search using the embedding
+        search_results = self.__perform_vector_search(input_embedding)
+
+        # Step 3: Retrieve content and citations from search results
+        content, citations = await self.__retrieve_content(obo_token, search_results)
+
+        # Step 4: Generate answer using citation sources
+        chat_coroutine = await self.__answer_using_document(content, history, should_stream)
+        return ({"data_points": citations}, chat_coroutine)
+    
+    async def __embed_text(self, text: str):
         chatgpt_args = {"deployment_id": self.embedding_deployment} if self.openai_host == "azure" else {}
         embedding_response = await openai.Embedding.acreate(
             **chatgpt_args,
-            input=user_input,
+            input=text,
             model=self.embedding_deployment
         )
-        input_embedding = embedding_response["data"][0]["embedding"]
-        print("input_embedding:"+str(input_embedding))
+        embedding = embedding_response["data"][0]["embedding"]
+        return embedding
 
-        # Step 2: Vector search using the embedding
-        search_results = await self.__perform_vector_search(input_embedding)
-        print("search_results:"+str(search_results))
-
-        # Step 3: Get accessible items from search results
-        citation_sources = []
-        # TODO: まずは逐次的にリクエストするが、後で並行してリクエストするように変更する
-        for doc in search_results:
-            item = self.__get_accessible_item(obo_token, doc["drive_id"], doc["site_id"], doc["item_id"])
-            if item:
-                item["chunk"] = doc["chunk"]
-                citation_sources.append(item)
-        if not citation_sources:
-            return ({}, {"choices": [{"message": {"role": "assistant", "content": "アクセス可能なドキュメントはありません。"}}]})
-
-        # Step 4: Generate answer using citation sources
-        content = "\n".join([f"name: {item['name']}, content: {item['chunk']}, URL: {item['web_url']}" for item in citation_sources])
-        chat_coroutine = await self.__answer_using_document(content, history, should_stream)
-        return ({"data_points": citation_sources}, chat_coroutine)
-    
-    async def __perform_vector_search(self, input_embedding: float):
+    def __perform_vector_search(self, input_embedding: float):
         client = SearchClient(
             endpoint=self.ai_search_endpoint,
             index_name=self.ai_search_index_name,
             credential=DefaultAzureCredential()
         )
 
-        results = client.search(
-            vector=[input_embedding],
-            search_text="*",
-            top=5,
-            select=["drive_id", "site_id", "item_id", "chunk"],
+        vector = VectorizedQuery(
+            vector=input_embedding,
+            k_nearest_neighbors=3, 
+            fields="text_vector",
         )
-        logging.info(f"Search results: {results}")
+        item_paged = client.search(
+            vector_queries=[vector],
+            search_text="*",
+            top=3,
+            select=["drive_id", "site_id", "item_id", "hit_id", "web_url", "chunk"],
+        )
+        results: list[dict] = []
+        for item in item_paged:
+            results.append(item)
         return results
+
+    async def __retrieve_content(self, obo_token: str, search_results: list[dict])-> tuple[str, list[dict]]:
+        content_sources, citation_sources = [], []
+
+        tasks = [self.__get_accessible_item(obo_token, doc["drive_id"], doc["site_id"], doc["item_id"]) for doc in search_results]
+        items = await asyncio.gather(*tasks)
+
+        for doc, item in zip(search_results, items):
+            if item:
+                cit = {
+                    "id": item["id"],
+                    "web_url": doc["web_url"],
+                    "hit_id": doc["hit_id"],
+                    "name": item["name"]
+                }
+                citation_sources.append(cit)
+                cont = {
+                    "name": item["name"],
+                    "chunk": doc["chunk"],
+                    "web_url": item["web_url"]
+                }
+                content_sources.append(cont)
+        if not citation_sources:
+            return ({}, {"choices": [{"message": {"role": "assistant", "content": "アクセス可能なドキュメントはありません。"}}]})
+
+        # Remove duplicate citation sources by name
+        unique_citation_sources = []
+        seen_names = set()
+        for source in citation_sources:
+            if source["name"] not in seen_names:
+                unique_citation_sources.append(source)
+                seen_names.add(source["name"])
+        citations = unique_citation_sources
+
+        content = "\n".join([f"{cont}" for cont in content_sources])
+
+        return content, citations
 
     async def __get_accessible_item(self, obo_token: str, drive_id: str, site_id: str, item_id: str)-> dict:
         client = GraphClientBuilder().get_client(obo_token)
@@ -370,7 +410,6 @@ If you cannot generate a search query, return only the number 0.
 
         try:
             if drive_id:
-                print("drive_id:"+drive_id)
                 drive_item = await client.drives.by_drive_id(drive_id).items.by_drive_item_id(item_id).get()
                 result = {
                     "id": drive_item.id,
