@@ -10,9 +10,9 @@ type HtmlParsedAnswer = {
 
 
 
-export function getSourceInfomation(dataPoints: DataPoint[], id:string): DataPoint {
+export function getSourceInfomation(dataPoints: DataPoint[], ref:string): DataPoint {
     //dataPointsの配列からidが一致するものを探す
-    const dataPoint = dataPoints.find((dataPoint) => dataPoint.id === id);
+    const dataPoint = dataPoints.find((dataPoint) => dataPoint.name === ref || dataPoint.id === ref);
     return dataPoint ?? { id: "", name: "", web_url: "", hit_id: "" }; 
 }
 
