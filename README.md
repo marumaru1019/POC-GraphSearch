@@ -15,7 +15,7 @@
 
 ### 機能
 - Microsoft 365内のドキュメントやサイト、Teamsの投稿などを基にしたLLMによるチャット形式の内部ナレッジ検索
-- Microsoft 365でも使用されるMicrosoft Search APIを使用したシンプルかつ高精度なRAGアーキテクチャ
+- Azure AI Search を使用した高精度なRAGアーキテクチャ
 - [On-Behalf-Of フロー](https://learn.microsoft.com/ja-jp/entra/identity-platform/v2-oauth2-on-behalf-of-flow)を使用した元データに付与されたユーザーごとの権限に応じた検索
 ![権限が異なるファイルを別々のユーザーが同じ入力で検索した結果](./assets/permission-sample.png)
 
@@ -34,8 +34,12 @@
 ### 前提条件
 - このリポジトリをクローンまたはダウンロード
 - Azure OpenAI ServiceまたはOpenAIの準備
-    - Azure OpenAI Service：任意のGPTベースのモデルのデプロイ
-    - OpenAI：APIキーを取得
+    - Completionモデル `gpt-4o` をデプロイ
+    - Embeddingモデル `text-embedding-3-small` をデプロイ
+    - OpenAI：APIキーを取得（Azure OpenAI Serviceを使用する場合は、マネージドID認証をするため不要）
+- Azure AI Searchの準備
+    - Azure AI Searchの作成（本サンプルアプリでは、Basic プランを使用して動作を確認）
+    - ロールベースのアクセス制御を有効化
 - ローカル実行を行う場合は以下の環境がローカルマシンに準備されていること
     - Python
     - Node.js
@@ -68,7 +72,14 @@
 https://github.com/07JP27/azureopenai-internal-microsoft-search/blob/52053b6c672a32899b5361ae3510dbe0c40693c6/src/backend/approaches/chatreadretrieveread.py#L29
 
 ### 3.ローカル実行
-1. 対象のAzure OpneAI Serviceのアクセス制御でローカル実行ユーザーにRBAC「Cognitive Services OpenAI User」ロールを付与します。**すでに共同作成者がついている場合でも必ず別途付与してください**
+1. 下記の内容に従って、ローカル実行ユーザーにRBACロールを付与します。**すでに共同作成者がついている場合でも必ず別途付与してください**
+
+    | ロール名                        | 対象サービス         | 役割                          |
+    |---------------------------------|----------------------|-------------------------------|
+    | Cognitive Services OpenAI User  | Azure OpenAI Service | 回答の生成, ベクトル埋め込み  |
+    | Search Service Contributor      | Azure AI Search     | Search Serviceの管理       |
+    | 検索インデックス データ共同作成者  | Azure AI Search      | インデックスデータの作成と読込 |
+
 1. ターミナルで`az login`を実行してAzure OpenAI ServiceのリソースのRBACに登録したアカウントでAzureにログインします。
 1. ターミナルなどでクローンしたファイルの「src/backend」に移動して「pip install -r requirements.txt」を実行します。パッケージのインストールが完了するまでしばらく待ちます。
 1. 別ターミナルなどを開きクローンしたファイルの「src/frontend」に移動して「npm install」を実行します。パッケージのインストールが完了するまでしばらく待ちます。
@@ -80,88 +91,135 @@ https://github.com/07JP27/azureopenai-internal-microsoft-search/blob/52053b6c672
 1. 画面右上の「Login」ボタンをクリックして、アプリ登録を行ったディレクトリのユーザーアカウントでログインします。ログインに成功したら「Login」と表示されていた部分にユーザーのUPNが表示されます。
 1. 入力エリアに質問を入力してチャットを開始します。
 
-ローカル実行ユーザーに以下のRBACロールを付与する。
-* Search Service 共同作成者、オブジェクトの作成と管理
-* 検索インデックス データ共同作成者、インデックスとクエリの読み込み
-
 ### 4.Azureへのデプロイ
-1. Azure にログインします。
-```
-az login
-```
+1. App Service にアプリケーションをデプロイし設定を行います。
+    1. Azure にログインします。
+    ```
+    az login
+    ```
 
-2. リソースグループを作成します(Azure OpenAI を使用する場合、同じリソースグループを使用してください)。
-```
-az group create --name <リソースグループ名> --location <リージョン>
-```
+    2. リソースグループを作成します(Azure OpenAI を使用する場合、同じリソースグループを使用してください)。
+    ```
+    az group create --name <リソースグループ名> --location <リージョン>
+    ```
 
-3. App Serviceプランを作成します。今回は Basic B1 を使用していますが、必要に応じて変更してください。
-```
-az appservice plan create --name <App Serviceプラン名> --resource-group <リソースグループ名> --sku B1 --is-linux
-```
+    3. App Serviceプランを作成します。今回は Basic B1 を使用していますが、必要に応じて変更してください。
+    ```
+    az appservice plan create --name <App Serviceプラン名> --resource-group <リソースグループ名> --sku B1 --is-linux
+    ```
 
-4. App Serviceを作成します。
-```
-az webapp create --resource-group <リソースグループ名> --plan <App Serviceプラン名> --name <App Service名> --runtime "PYTHON|3.11" --deployment-local-git
-```
+    4. App Serviceを作成します。
+    ```
+    az webapp create --resource-group <リソースグループ名> --plan <App Serviceプラン名> --name <App Service名> --runtime "PYTHON|3.11" --deployment-local-git
+    ```
 
-AI Search を作成します。
-ロールベースのアクセス制御に切り替えます。
-インデックスを作成します。
-AOAI 埋め込みモデル text-embedding-3-small を作成します。
+    5. App Serviceにデプロイするために、下記のコマンドでデプロイするためのファイルをzip化します。
+    ```
+    # フロントエンドのビルド
+    cd src/frontend
+    npm install
+    npm run build
 
-5. App Serviceにデプロイするために、下記のコマンドでデプロイするためのファイルをzip化します。
-```
-# フロントエンドのビルド
-cd src/frontend
-npm install
-npm run build
+    # バックエンドのzip化
+    cd ../backend
+    zip -r ./app.zip .
+    ```
 
-# バックエンドのzip化
-cd ../backend
-zip -r ./app.zip .
-```
+    6. デプロイ用のzipファイルを作成したら、App Serviceにデプロイします。
+    ```
+    az webapp deployment source config-zip --resource-group <リソースグループ名> --name <App Service名> --src app.zip
+    ```
 
-6. デプロイ用のzipファイルを作成したら、App Serviceにデプロイします。
-```
-az webapp deployment source config-zip --resource-group <リソースグループ名> --name <App Service名> --src app.zip
-```
-
-7. App Serviceに必要な設定をします。環境変数の設定では、.envファイルに記載されている内容およびSCM_DO_BUILD_DURING_DEPLOYMENTをtrueに設定します。
-```
-# スタートアップコマンドの設定
-az webapp config set --resource-group <リソースグループ名> --name <App Service名> --startup-file "python3 -m gunicorn main:app"
+    7. App Serviceに必要な設定をします。環境変数の設定では、.envファイルに記載されている内容およびSCM_DO_BUILD_DURING_DEPLOYMENTをtrueに設定します。
+    ```
+    # スタートアップコマンドの設定
+    az webapp config set --resource-group <リソースグループ名> --name <App Service名> --startup-file "python3 -m gunicorn main:app"
 
 
-# 環境変数の設定
-az webapp config appsettings set --name <App Service名> --resource-group <リソースグループ名> --settings \
-SCM_DO_BUILD_DURING_DEPLOYMENT=true \
-AZURE_OPENAI_CHATGPT_MODEL=<Azure OpenAI のモデル名> \
-AZURE_OPENAI_SERVICE=<Azure OpenAI Serviceのリソース名> \
-AZURE_OPENAI_CHATGPT_DEPLOYMENT=<Azure OpenAI のモデルのデプロイ名> \
-AZURE_USE_AUTHENTICATION="true" \
-AZURE_SERVER_APP_ID=<アプリケーションID> \
-AZURE_SERVER_APP_SECRET=<アプリケーションシークレット> \
-AZURE_CLIENT_APP_ID=<アプリケーションID> \
-AZURE_TENANT_ID=<テナントID> \
-TOKEN_CACHE_PATH="None"
-```
-8. App Service が Azure OpenAI Service にアクセスできるようにするために、Azure OpenAI Service のアクセス制御で App Service に以下の RBAC ロールを付与します。
+    # 環境変数の設定
+    az webapp config appsettings set --name <App Service名> --resource-group <リソースグループ名> --settings \
+    SCM_DO_BUILD_DURING_DEPLOYMENT=true \
+    AZURE_OPENAI_CHATGPT_MODEL=<Azure OpenAI のモデル名> \
+    AZURE_OPENAI_SERVICE=<Azure OpenAI Serviceのリソース名> \
+    AZURE_OPENAI_CHATGPT_DEPLOYMENT=<Azure OpenAI のモデルのデプロイ名> \
+    AZURE_USE_AUTHENTICATION="true" \
+    AZURE_SERVER_APP_ID=<アプリケーションID> \
+    AZURE_SERVER_APP_SECRET=<アプリケーションシークレット> \
+    AZURE_CLIENT_APP_ID=<アプリケーションID> \
+    AZURE_TENANT_ID=<テナントID> \
+    TOKEN_CACHE_PATH="None"
+    ```
 
-- Cognitive Services OpenAI User
-- 検索インデックス データ閲覧者
-```
-# App ServiceのマネージドIDを有効化する
-az webapp identity assign --resource-group <リソースグループ名> --name <App Service名> 
+    8. App Service が Azure OpenAI Service と Azure AI Search にアクセスできるよう、App Service に以下の RBAC ロールを付与します。
 
-# App ServiceのマネージドIDが有効化したことを確認する
-$role = (az webapp identity show --resource-group <リソースグループ名> --name <App Service名> --query principalId -o tsv)
+        | ロール名                        | 対象サービス         | 役割                          |
+        |---------------------------------|----------------------|-------------------------------|
+        | Cognitive Services OpenAI User  | Azure OpenAI Service | 回答の生成, ベクトル埋め込み  |
+        | Search Service Contributor       | Azure AI Search      | Search Serviceの管理         |
+        | 検索インデックス データ閲覧者     | Azure AI Search      | インデックスデータの読込      |
 
-# App ServiceのマネージドIDに対して、Azure OpenAI Serviceのアクセス権限を付与する
-az role assignment create --role "Cognitive Services OpenAI User" --assignee $role --scope /subscriptions/<サブスクリプションID>/resourceGroups/<リソースグループ名>
-```
+        下記に示すコマンドを順に実行してください。
+        ```
+        # App ServiceのマネージドIDを有効化する
+        az webapp identity assign --resource-group <リソースグループ名> --name <App Service名> 
 
-9. Entra ID アプリケーションに対して、Azure App Service の URL をリダイレクト URI に追加します。
+        # App ServiceのマネージドIDに対応したオブジェクトIDを取得する
+        role=$(az webapp identity show --resource-group <リソースグループ名> --name <App Service名> --query principalId -o tsv)
+
+        # PowerShellで実行する場合
+        $role = az webapp identity show --resource-group <リソースグループ名> --name <App Service名> --query principalId -o tsv
+
+        # App ServiceのマネージドIDに対して、Azure OpenAI Serviceのアクセス権限を付与する
+        az role assignment create --role "Cognitive Services OpenAI User" --assignee $role --scope /subscriptions/<サブスクリプションID>/resourceGroups/<リソースグループ名>
+
+        # App ServiceのマネージドIDに対して、Azure AI Search のリソース管理権限を付与する
+        az role assignment create --role "Search Service Contributor" --assignee $role --scope /subscriptions/<サブスクリプションID>/resourceGroups/<リソースグループ名>/providers/Microsoft.Search/searchServices/<Azure AI Searchのサービス名>
+
+        # App ServiceのマネージドIDに対して、Azure AI Search のインデックスデータ閲覧権限を付与する
+        az role assignment create --role "Search Index Data Reader" --assignee $role --scope /subscriptions/<サブスクリプションID>/resourceGroups/<リソースグループ名>/providers/Microsoft.Search/searchServices/<Azure AI Searchのサービス名>
+
+        ```
+
+9. Azure AI Searchにインデックスを作成します。
+
+    1. OneDriveもしくはSharepointからRAGに使用するファイルを必要な数だけダウンロードします。
+    2. `src/backend/indexing/files/original` ディレクトリにダウンロードした全てのファイルを配置します。
+    3. `src/backend/indexing` ディレクトリで、`python3 convert_markdown.py` を実行します。これにより、`src/backend/indexing/files/markdown` ディレクトリにMarkdown形式のファイルが生成されます。
+    4. [Graph ExplorerからsearchEntityのクエリを実行](https://developer.microsoft.com/en-us/graph/graph-explorer?request=search%2Fquery&method=POST&version=v1.0&GraphUrl=https://graph.microsoft.com&requestBody=Ilwie1xcclxcbiAgXFxcInJlcXVlc3RzXFxcIjogW1xcclxcbiAgICB7XFxyXFxuICAgICAgXFxcImVudGl0eVR5cGVzXFxcIjogW1xcclxcbiAgICAgICAgXFxcImV4dGVybmFsSXRlbVxcXCJcXHJcXG4gICAgICBdLFxcclxcbiAgICAgIFxcXCJjb250ZW50U291cmNlc1xcXCI6IFtcXHJcXG4gICAgICAgIFxcXCIvZXh0ZXJuYWwvY29ubmVjdGlvbnMvY29ubmVjdGlvbmZyaWVuZGx5bmFtZVxcXCJcXHJcXG4gICAgICBdLFxcclxcbiAgICAgICBcXFwicmVnaW9uXFxcIjogXFxcIlVTXFxcIixcXHJcXG4gICAgICAgXFxcInF1ZXJ5XFxcIjoge1xcclxcbiAgICAgICAgXFxcInF1ZXJ5U3RyaW5nXFxcIjogXFxcInRlc3RcXFwiXFxyXFxuICAgICAgfSxcXHJcXG4gICAgICBcXFwiZnJvbVxcXCI6IDAsXFxyXFxuICAgICAgXFxcInNpemVcXFwiOiAyNSxcXHJcXG4gICAgICBcXFwiZmllbGRzXFxcIjogW1xcclxcbiAgICAgICAgXFxcInRpdGxlXFxcIixcXHJcXG4gICAgICAgIFxcXCJkZXNjcmlwdGlvblxcXCJcXHJcXG4gICAgICBdXFxyXFxuICAgIH1cXHJcXG4gIF1cXHJcXG59XCIi)します。リクエストボディには下記の内容をコピー&ペーストします。`queryString` にはRAGに使用するファイル名を入力します。
+        ```json
+        {
+            "requests": [
+                {
+                    "entityTypes": ["driveItem"],
+                    "query": {
+                        "queryString": "就業規則"
+                    },
+                    "fields": [
+                        "fileName",
+                        "driveId",
+                        "siteId",
+                        "hitId",
+                        "webUrl"
+                    ]
+                }
+            ]
+        }
+        ```
+        以下の表が示す対応関係に従って、得られたレスポンスに含まれる値をコピーして `src/backend/indexing/file_info.json` に転記します。
+
+        | Graph APIのレスポンス | file_info.json のプロパティ |
+        |-----------------------|-----------------------------|
+        | fileName              | file_name                   |
+        | driveId               | drive_id                    |
+        | siteId                | site_id                     |
+        | id                    | item_id                     |
+        | hitId                 | hit_id                      |
+        | webUrl                | web_url                     |
+    
+    5. `src/backend/indexing` ディレクトリで、`python3 create_index.py` を実行します。これにより、`file_info.json` に記載されたファイル情報に基づいて、Azure AI Search にインデックスを作成しチャンクをアップロードします。
+
+
+10. Entra ID アプリケーションに対して、Azure App Service の URL をリダイレクト URI に追加します。
     1. [Azure Portal](https://portal.azure.com/) にログインします。
     2. [Microsoft Entra ID](https://portal.azure.com/#view/Microsoft_AAD_IAM/ActiveDirectoryMenuBlade/~/Overview) > アプリの登録 の順に選択していき、アプリ登録一覧画面で作成したアプリケーションを選択します。
     3. 「認証」を選択します。
