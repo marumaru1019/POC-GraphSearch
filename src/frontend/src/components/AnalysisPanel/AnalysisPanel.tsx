@@ -27,6 +27,9 @@ export const AnalysisPanel = ({ answer, activeTab, activeCitation, activeFileNam
 
     const sanitizedThoughts = DOMPurify.sanitize(answer.choices[0].context.thoughts!);
 
+    // CAUTION: This function expects activeWebURL and activeCitation got from the API response.
+    // activeWebURL is a value of webUrl property and activeCitation is a value of hitId property.
+    // https://learn.microsoft.com/ja-jp/graph/api/search-query?view=graph-rest-1.0&tabs=http
     const switchIframeURLByFileType = () => {
         if (!activeFileName) {
             return ''
